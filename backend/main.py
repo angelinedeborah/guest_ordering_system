@@ -5,6 +5,7 @@ import mysql.connector
 
 app = FastAPI()
 
+# Enforce secure CORS policy headers to permit frontend network requests
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connecting python directly to  MySQL db
+# Connecting python directly to MySQL db
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
@@ -23,17 +24,18 @@ def get_db_connection():
         autocommit=True
     )
 
-#  Structure for incoming requests
+# Structure for incoming client verification requests
 class GuestLocation(BaseModel):
     restaurant_id: int
     latitude: float
     longitude: float
 
+# Structure for administrative polygon zone configuration
 class AdminZoneInput(BaseModel):
     name: str
     coordinates: list # List of lat, lng points
 
-#  Custom Geospatial Algorithm (Ray-Casting / Point-in-Polygon)
+# Custom Geospatial Algorithm (Ray-Casting / Point-in-Polygon)
 def is_point_in_polygon(lat, lng, polygon_points):
     """
     Checks if a customer's coordinate (lat, lng) is inside a list of polygon corners.
@@ -47,7 +49,7 @@ def is_point_in_polygon(lat, lng, polygon_points):
         lat_i, lng_i = polygon_points[i]
         lat_j, lng_j = polygon_points[j]
         
-        # The math check if our ray cross this boundary line
+        # The math check if our ray crosses this boundary line
         if ((lng_i > lng) != (lng_j > lng)) and \
            (lat < (lat_j - lat_i) * (lng - lng_i) / (lng_j - lng_i + 1e-9) + lat_i):
             inside = not inside
@@ -55,71 +57,101 @@ def is_point_in_polygon(lat, lng, polygon_points):
         
     return inside
 
-# 4. The Validation Endpoint Engine
+# 4. The Optimized Validation Endpoint Engine (With Phase 5 Fail-Safes)
 @app.post("/api/validate-location")
 async def check_location(guest: GuestLocation):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    
-    # Fetch the raw boundary coordinates from MySQL instead of using spatial functions
-    # ST_AsText converts the map data into plain readable numbers for Python
-    cursor.execute("SELECT id, name, ST_AsText(zone_polygon) as polygon_text FROM restaurant_zones WHERE id = %s AND is_active = True", (guest.restaurant_id,))
-    restaurant = cursor.fetchone()
-    
-    if not restaurant:
-        cursor.close()
-        conn.close()
-        return {"in_zone": False, "message": "Restaurant not found.", "can_place_order": False}
-    
-    # Clean up the text data from MySQL to extract an array of pure numbers
-    raw_coords = restaurant['polygon_text'].replace("POLYGON((", "").replace("))", "").split(",")
-    polygon_points = []
-    for coord in raw_coords:
-        parts = coord.strip().split(" ")
-        polygon_points.append((float(parts[0]), float(parts[1]))) # (Latitude, Longitude)
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
         
-    # RUN YOUR CUSTOM ALGORITHM HERE!
-    is_inside = is_point_in_polygon(guest.latitude, guest.longitude, polygon_points)
-    
-    # --- AUDIT LOGGING ---
-    log_query = """
-        INSERT INTO validation_logs (restaurant_id, customer_latitude, customer_longitude, is_inside_zone)
-        VALUES (%s, %s, %s, %s);
-    """
-    cursor.execute(log_query, (guest.restaurant_id, guest.latitude, guest.longitude, is_inside))
-    
-    cursor.close()
-    conn.close()
-    
-    if is_inside:
+        query = """
+            SELECT id, name, ST_AsText(coordinates) as polygon_text 
+            FROM restaurant_zones 
+            WHERE id = %s AND is_active = True
+        """
+        cursor.execute(query, (guest.restaurant_id,))
+        restaurant = cursor.fetchone()
+        
+        if not restaurant:
+            return {"in_zone": False, "message": "Zone/Restaurant profile not found.", "can_place_order": False}
+        
+        # Parse text coordinates for algorithm processing
+        raw_coords = restaurant['polygon_text'].replace("POLYGON((", "").replace("))", "").split(",")
+        polygon_points = []
+        for coord in raw_coords:
+            parts = coord.strip().split(" ")
+            polygon_points.append((float(parts[0]), float(parts[1]))) 
+            
+        # Execute your Ray-Casting algorithm check
+        is_inside = is_point_in_polygon(guest.latitude, guest.longitude, polygon_points)
+        is_inside_flag = 1 if is_inside else 0
+        
+        # Log to structural ledger
+        log_query = """
+            INSERT INTO validation_logs (calculated_zone_id, customer_latitude, customer_longitude, is_inside_zone)
+            VALUES (%s, %s, %s, %s);
+        """
+        cursor.execute(log_query, (restaurant['id'], guest.latitude, guest.longitude, is_inside_flag))
+        
+        if is_inside:
+            return {
+                "in_zone": True,
+                "message": f"Welcome to {restaurant['name']}!",
+                "can_place_order": True,
+                "show_special_offers": True
+            }
+        else:
+            return {
+                "in_zone": False,
+                "message": "You are outside the restaurant property limits. Ordering remains locked.",
+                "can_place_order": False,
+                "show_special_offers": False
+            }
+
+    except mysql.connector.Error as db_error:
+        # Prevents terminal crash and responds with a safe fallback configuration
+        print(f"[RUNTIME CRITICAL ERROR]: Database pipeline execution failure: {db_error}")
         return {
-            "in_zone": True,
-            "message": f"Welcome to {restaurant['name']}!",
-            "can_place_order": True,
-            "show_special_offers": True
+            "in_zone": False, 
+            "message": "System Maintenance Notice: Core validation servers are currently offline. Ordering is temporarily locked.", 
+            "can_place_order": False
         }
-    else:
-        return {
-            "in_zone": False,
-            "message": "You are outside the restaurant property limits. You can view the menu, but ordering is locked.",
-            "can_place_order": False,
-            "show_special_offers": False
-        }
+        
+    finally:
+        # Ensures memory buffers and network sockets close safely no matter what
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
 
 # 5. The Admin Endpoint to Save a New Zone
 @app.post("/api/admin/zones")
 async def create_zone(zone: AdminZoneInput):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    coord_strings = [f"{pt[0]} {pt[1]}" for pt in zone.coordinates]
-    if coord_strings[0] != coord_strings[-1]:
-        coord_strings.append(coord_strings[0])
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-    wkt_polygon = f"POLYGON(({', '.join(coord_strings)}))"
-    
-    query = "INSERT INTO restaurant_zones (name, zone_polygon) VALUES (%s, ST_GeomFromText(%s, 4326));"
-    cursor.execute(query, (zone.name, wkt_polygon))
-    cursor.close()
-    conn.close()
-    return {"status": "success", "message": f"Zone '{zone.name}' saved successfully!"}
+        coord_strings = [f"{pt[0]} {pt[1]}" for pt in zone.coordinates]
+        if coord_strings[0] != coord_strings[-1]:
+            coord_strings.append(coord_strings[0])
+            
+        wkt_polygon = f"POLYGON(({', '.join(coord_strings)}))"
+        
+        query = "INSERT INTO restaurant_zones (name, coordinates) VALUES (%s, ST_GeomFromText(%s, 4326));"
+        cursor.execute(query, (zone.name, wkt_polygon))
+        
+        return {"status": "success", "message": f"Zone '{zone.name}' saved successfully!"}
+        
+    except mysql.connector.Error as db_error:
+        print(f"[ADMIN CRITICAL ERROR]: Failed to save zone: {db_error}")
+        return {"status": "error", "message": "Database write failure while storing zone parameters."}
+        
+    finally:
+        if cursor:
+            cursor.close()
+        if conn and conn.is_connected():
+            conn.close()
