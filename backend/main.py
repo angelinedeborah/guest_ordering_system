@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import mysql.connector
+import os
 
 app = FastAPI()
 
@@ -17,10 +18,12 @@ app.add_middleware(
 # Connecting python directly to MySQL db using your schema configurations
 def get_db_connection():
     return mysql.connector.connect(
-        host="localhost",
-        database="guest",             # Matches your "CREATE DATABASE guest;"
-        user="root",                 
-        password="root",              # Matches your "password='root';" configuration
+        host=os.getenv("DB_HOST", "localhost"),
+        database=os.getenv("DB_NAME", "guest"),             
+        user=os.getenv("DB_USER", "root"),                 
+        password=os.getenv("DB_PASSWORD", "root"),
+        port=int(os.getenv("DB_PORT", 3306)),
+        ssl_mode="REQUIRED",  # Aiven requires SSL to connect safely
         autocommit=True
     )
 
