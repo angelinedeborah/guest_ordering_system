@@ -231,13 +231,13 @@ function handleGPSError(err) {
         };
 
         // Network pipeline connecting to your active FastAPI port
-fetch('https://guest-ordering-system.onrender.com/api/validate-location', {   
-             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        })
+fetch('https://guest-ordering-system.onrender.com/api/validate-location', { 
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+})
         .then(response => {
             if (!response.ok) {
                 throw new Error('Server returned an invalid status code');
