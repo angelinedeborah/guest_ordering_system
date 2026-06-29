@@ -221,7 +221,7 @@ function handleGPSError(err) {
         const statusBox = document.getElementById('status-box');
 
         statusBox.className = 'status-card status-loading';
-        statusBox.innerText = 'Passing coordinates to custom Ray-Casting algorithm...';
+        statusBox.innerText = 'almost there';
 
         // FIXED FE-ADJUSTMENT: Formatted JSON parameters to match your FastAPI Pydantic schema (GuestLocation)
         const payload = {
