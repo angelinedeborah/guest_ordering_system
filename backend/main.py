@@ -18,31 +18,28 @@ app.add_middleware(
 # Connecting python directly to MySQL db using your schema configurations
 # Connecting python directly to MySQL db using your schema configurations
 def get_db_connection():
-    # Gather your baseline environment variables safely
-    db_kwargs = {
-        "host": os.getenv("DB_HOST", "localhost"),
-        "database": os.getenv("DB_NAME", "guest"),             
-        "user": os.getenv("DB_USER", "root"),                 
-        "password": os.getenv("DB_PASSWORD", "root"),
-        "port": int(os.getenv("DB_PORT", 3306)),
-        "autocommit": True
-    }
-    
-    # Strategy A: Try connecting with standard native ssl_ca initialization
-    try:
-        return mysql.connector.connect(**db_kwargs, ssl_ca="")
-    except AttributeError:
-        pass  # If it fails with an attribute keyword error, skip down to the next strategy
-        
-    # Strategy B: Try using the fallback version-agnostic boolean parameter
-    try:
-        return mysql.connector.connect(**db_kwargs, ssl_disabled=False)
-    except AttributeError:
-        pass
-        
-    # Strategy C: Absolute fallback configuration (No explicit SSL keywords passed)
-    # The connector will fall back entirely to basic parameters or native platform defaults
-    return mysql.connector.connect(**db_kwargs)
+    # Fetch clean environmental variables
+    db_host = os.getenv("DB_HOST", "localhost").strip()
+    db_name = os.getenv("DB_NAME", "guest")
+    db_user = os.getenv("DB_USER", "root")
+    db_password = os.getenv("DB_PASSWORD", "root")
+    db_port = int(os.getenv("DB_PORT", 3306))
+
+    # Strip out any lingering prefixes if they accidentally got pasted into the environment variable
+    if "://" in db_host:
+        db_host = db_host.split("://")[-1]
+    if ":" in db_host:
+        db_host = db_host.split(":")[0]
+
+    return mysql.connector.connect(
+        host=db_host,
+        database=db_name,             
+        user=db_user,                 
+        password=db_password,
+        port=db_port,
+        ssl_ca="", # Forces native cloud SSL encryption safely
+        autocommit=True
+    )
 # Structure for incoming client verification requests
 class GuestLocation(BaseModel):
     restaurant_id: int
