@@ -18,15 +18,31 @@ app.add_middleware(
 # Connecting python directly to MySQL db using your schema configurations
 # Connecting python directly to MySQL db using your schema configurations
 def get_db_connection():
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        database=os.getenv("DB_NAME", "guest"),             
-        user=os.getenv("DB_USER", "root"),                 
-        password=os.getenv("DB_PASSWORD", "root"),
-        port=int(os.getenv("DB_PORT", 3306)),
-        ssl_ca="",  # Passing an empty string enables SSL without looking for a local file path
-        autocommit=True
-    )
+    # Gather your baseline environment variables safely
+    db_kwargs = {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "database": os.getenv("DB_NAME", "guest"),             
+        "user": os.getenv("DB_USER", "root"),                 
+        "password": os.getenv("DB_PASSWORD", "root"),
+        "port": int(os.getenv("DB_PORT", 3306)),
+        "autocommit": True
+    }
+    
+    # Strategy A: Try connecting with standard native ssl_ca initialization
+    try:
+        return mysql.connector.connect(**db_kwargs, ssl_ca="")
+    except AttributeError:
+        pass  # If it fails with an attribute keyword error, skip down to the next strategy
+        
+    # Strategy B: Try using the fallback version-agnostic boolean parameter
+    try:
+        return mysql.connector.connect(**db_kwargs, ssl_disabled=False)
+    except AttributeError:
+        pass
+        
+    # Strategy C: Absolute fallback configuration (No explicit SSL keywords passed)
+    # The connector will fall back entirely to basic parameters or native platform defaults
+    return mysql.connector.connect(**db_kwargs)
 # Structure for incoming client verification requests
 class GuestLocation(BaseModel):
     restaurant_id: int
