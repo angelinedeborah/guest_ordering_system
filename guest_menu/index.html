@@ -6,10 +6,10 @@
     <title>Guest Ordering System</title>
     <style>
         :root {
-            --primary: #791111;    
-            --bg: #FEFFD3;         
-            --light-green: #BCD9A2;  
-            --dark-green: #6D9E51;   
+            --primary: #A82323;  
+            --bg: #FEFFD3;             
+           --light-green: #BCD9A2;          
+    --dark-green: #6D9E51;   
             --dark: #2C2C2C;
         }
 
@@ -151,9 +151,9 @@
 
 <div class="container">
     <h1>Welcome to the Restaurant</h1>
-    <p>Please verify your location.</p>
+    <p>Please verify your location to securely open our transactional digital menu mapping.</p>
 
-    <button class="btn-location" id="location-btn">Verify My Location</button>
+    <button class="btn-location" id="location-btn">Verify My Location To Order</button>
     
     <div id="status-box" class="status-card"></div>
 
@@ -161,19 +161,18 @@
         <h3 style="color: var(--dark); margin-bottom: 15px;">Today's Menu</h3>
         
         <div class="menu-item">
-            <span> House Pasta</span>
-            <strong style="color: var(--primary);">: ₹350</strong>
+            <span>Signature  Pasta</span>
+            <strong style="color: var(--primary);">References: ₹350</strong>
         </div>
         
         <div class="menu-item">
             <span> Margherita Pizza</span>
-            <strong style="color: var(--primary);">: ₹420</strong>
+            <strong style="color: var(--primary);">References: ₹420</strong>
         </div>
         
-        <button class="btn-order" id="order-btn">Place  Order</button>
+        <button class="btn-order" id="order-btn">Place Order</button>
     </div>
 </div>
-
 <script>
     document.getElementById('location-btn').addEventListener('click', () => {
         const statusBox = document.getElementById('status-box');
@@ -187,36 +186,34 @@
             statusBox.innerText = 'Geolocation is not supported by your current browser configuration.';
             return;
         }
-
         const options = {
             enableHighAccuracy: true,
             timeout: 10000,
             maximumAge: 0
         };
-
         navigator.geolocation.getCurrentPosition(sendLocationToBackend, handleGPSError, options);
     });
-
-   function handleGPSError(err) {
+function handleGPSError(err) {
     const statusBox = document.getElementById('status-box');
     statusBox.className = 'status-card status-error';
     
     // Evaluates explicit hardware status codes returned by the device
     switch(err.code) {
         case err.PERMISSION_DENIED:
-            statusBox.innerText = "Location Access Denied. Please reset your browser site permissions to allow order verification.";
+            statusBox.innerText = "Location Access Denied: Please reset your browser site permissions to allow order verification.";
             break;
         case err.POSITION_UNAVAILABLE:
-            statusBox.innerText = "GPS Network Error. Your device's satellite signal is currently unavailable. please try again.";
+            statusBox.innerText = "GPS Network Error: Your device's satellite signal is currently unavailable. please try again.";
             break;
         case err.TIMEOUT:
-            statusBox.innerText = "Location Timeout. The request to capture your hardware coordinates timed out. Check your connection.";
+            statusBox.innerText = "Location Timeout: The request to capture your hardware coordinates timed out. Check your connection.";
             break;
         default:
-            statusBox.innerText = `System Error. An unhandled exception occurred (${err.message}).`;
+            statusBox.innerText = `System Error: An unhandled exception occurred (${err.message}).`;
             break;
     }
 }
+
 
     function sendLocationToBackend(position) {
         const lat = position.coords.latitude;
@@ -234,8 +231,8 @@
         };
 
         // Network pipeline connecting to your active FastAPI port
-        fetch('http://127.0.0.1:8000/api/validate-location', {
-            method: 'POST',
+fetch('https://guest-ordering-system.onrender.com/api/validate-location', {   
+             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -266,12 +263,16 @@
                 document.getElementById('order-btn').style.display = 'none'; // Lock ordering functionality
             }
         })
-        .catch(error => {
+   .catch(error => {
+            const statusBox = document.getElementById('status-box');
             statusBox.className = 'status-card status-error';
-            statusBox.innerText = 'Gateway Connection Error: Ensure your FastAPI terminal server is running on local port 8000.';
-            console.error('Connection Exception:', error);
+            
+            // This forces the webpage to print the actual network exception instead of a generic string!
+            statusBox.innerText = `Frontend Network Blocked: ${error.message}. Look at the F12 Console for details.`; 
+            console.error('Detailed Connection Exception:', error);
         });
     }
 </script>
 </body>
 </html>
+

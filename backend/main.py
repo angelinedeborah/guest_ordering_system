@@ -14,13 +14,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Connecting python directly to MySQL db
+# Connecting python directly to MySQL db using your schema configurations
 def get_db_connection():
     return mysql.connector.connect(
         host="localhost",
-        database="guest_ordering_system",
+        database="guest",             # Matches your "CREATE DATABASE guest;"
         user="root",                 
-        password="root",   
+        password="root",              # Matches your "password='root';" configuration
         autocommit=True
     )
 
@@ -57,7 +57,7 @@ def is_point_in_polygon(lat, lng, polygon_points):
         
     return inside
 
-# 4. The Optimized Validation Endpoint Engine (With Phase 5 Fail-Safes)
+# The Optimized Validation Endpoint Engine (With Phase 5 Fail-Safes)
 @app.post("/api/validate-location")
 async def check_location(guest: GuestLocation):
     conn = None
@@ -66,8 +66,9 @@ async def check_location(guest: GuestLocation):
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
+        # FIX: Updated column selector to match 'zone_polygon' from your database layout
         query = """
-            SELECT id, name, ST_AsText(coordinates) as polygon_text 
+            SELECT id, name, ST_AsText(zone_polygon) as polygon_text 
             FROM restaurant_zones 
             WHERE id = %s AND is_active = True
         """
@@ -78,17 +79,23 @@ async def check_location(guest: GuestLocation):
             return {"in_zone": False, "message": "Zone/Restaurant profile not found.", "can_place_order": False}
         
         # Parse text coordinates for algorithm processing
-        raw_coords = restaurant['polygon_text'].replace("POLYGON((", "").replace("))", "").split(",")
+        # Clean the text string representation safely
+        polygon_text_clean = restaurant['polygon_text'].replace("POLYGON((", "").replace("))", "")
+        raw_coords = polygon_text_clean.split(",")
         polygon_points = []
+        
         for coord in raw_coords:
+            # .strip() removes any leading or trailing spaces before splitting by a single space
             parts = coord.strip().split(" ")
-            polygon_points.append((float(parts[0]), float(parts[1]))) 
-            
+            if len(parts) >= 2:
+                lat_val = float(parts[0])
+                lng_val = float(parts[1])
+                polygon_points.append((lat_val, lng_val))
         # Execute your Ray-Casting algorithm check
         is_inside = is_point_in_polygon(guest.latitude, guest.longitude, polygon_points)
         is_inside_flag = 1 if is_inside else 0
         
-        # Log to structural ledger
+        # Log to structural ledger matching updated database schema constraint configurations
         log_query = """
             INSERT INTO validation_logs (calculated_zone_id, customer_latitude, customer_longitude, is_inside_zone)
             VALUES (%s, %s, %s, %s);
@@ -111,14 +118,14 @@ async def check_location(guest: GuestLocation):
             }
 
     except mysql.connector.Error as db_error:
-        # Prevents terminal crash and responds with a safe fallback configuration
-        print(f"[RUNTIME CRITICAL ERROR]: Database pipeline execution failure: {db_error}")
+        # Crucial Fix: This overrides the maintenance string and prints the raw backend issue on your screen!
+        error_string = f"Internal MySQL Error: [{db_error.errno}] {db_error.msg}"
+        print(f"\n❌ [CRITICAL DATABASE DIAGNOSTIC]: {error_string}\n")
         return {
             "in_zone": False, 
-            "message": "System Maintenance Notice: Core validation servers are currently offline. Ordering is temporarily locked.", 
+            "message": error_string, 
             "can_place_order": False
         }
-        
     finally:
         # Ensures memory buffers and network sockets close safely no matter what
         if cursor:
@@ -126,7 +133,7 @@ async def check_location(guest: GuestLocation):
         if conn and conn.is_connected():
             conn.close()
 
-# 5. The Admin Endpoint to Save a New Zone
+# The Admin Endpoint to Save a New Zone
 @app.post("/api/admin/zones")
 async def create_zone(zone: AdminZoneInput):
     conn = None
@@ -141,7 +148,8 @@ async def create_zone(zone: AdminZoneInput):
             
         wkt_polygon = f"POLYGON(({', '.join(coord_strings)}))"
         
-        query = "INSERT INTO restaurant_zones (name, coordinates) VALUES (%s, ST_GeomFromText(%s, 4326));"
+        # FIX: Updated insertion string to populate column 'zone_polygon'
+        query = "INSERT INTO restaurant_zones (name, zone_polygon) VALUES (%s, ST_GeomFromText(%s, 4326));"
         cursor.execute(query, (zone.name, wkt_polygon))
         
         return {"status": "success", "message": f"Zone '{zone.name}' saved successfully!"}
