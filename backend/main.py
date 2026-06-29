@@ -23,7 +23,8 @@ def get_db_connection():
         user=os.getenv("DB_USER", "root"),                 
         password=os.getenv("DB_PASSWORD", "root"),
         port=int(os.getenv("DB_PORT", 3306)),
-        ssl_mode="REQUIRED",  # Aiven requires SSL to connect safely
+        # FIX: Swap ssl_mode out for generic ssl enabling dictionary to bypass version strictness
+        ssl_disabled=False, 
         autocommit=True
     )
 
