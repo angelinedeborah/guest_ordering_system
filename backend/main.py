@@ -18,19 +18,13 @@ app.add_middleware(
 # Connecting python directly to MySQL db using your schema configurations
 # Connecting python directly to MySQL db using your schema configurations
 def get_db_connection():
-    # Use a dictionary configuration for SSL to bypass version bugs
-    ssl_config = {
-        # This tells the connector to use SSL without forcing a local certificate file validation path
-        "use_ssl": True
-    }
-    
     return mysql.connector.connect(
         host=os.getenv("DB_HOST", "localhost"),
         database=os.getenv("DB_NAME", "guest"),             
         user=os.getenv("DB_USER", "root"),                 
         password=os.getenv("DB_PASSWORD", "root"),
         port=int(os.getenv("DB_PORT", 3306)),
-        ssl_config=ssl_config, # Safely pass the configuration map
+        ssl_ca="",  # Passing an empty string enables SSL without looking for a local file path
         autocommit=True
     )
 # Structure for incoming client verification requests
