@@ -30,8 +30,8 @@ def get_db_connection():
         db_host = db_host.split("://")[-1]
     if ":" in db_host:
         db_host = db_host.split(":")[0]
-
-    return mysql.connector.connect(
+    try: 
+           return mysql.connector.connect(
         host=db_host,
         database=db_name,             
         user=db_user,                 
@@ -40,6 +40,11 @@ def get_db_connection():
         ssl_ca="", # Forces native cloud SSL encryption safely
         autocommit=True
     )
+    except mysql.connector.Error as err:
+        # If Aiven shuts off, this intercepts the crash and prints a clear server log message
+        if err.errno == 2005:
+            print("CRITICAL: Database is currently powered off in the Aiven Console. Please turn it on to restore functionality.")
+        raise err
 # Structure for incoming client verification requests
 class GuestLocation(BaseModel):
     restaurant_id: int
